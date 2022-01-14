@@ -123,9 +123,240 @@ def c_gradient_VAD_cal_uv(vr):
     u0 = a1/math.cos(alpha) * ((len(dvr))/2/pi)
     v0 = -b1/math.cos(alpha) * (len(dvr)/2/pi)
     print('u0, v0:', u0, v0)
+
+def RMSE_beta_sigma(way1, way2, beta_nums):
+    if way1=='1' and way2=='1':
+        return beta_nums
+
+    total = 0.0
+    if way1=='1':
+        if way2=='cos':
+            for beta in range(beta_nums):
+                total += math.cos(beta*pi/180)
+        if way2=='sin':
+            for beta in range(beta_nums):
+                total += math.sin(beta*pi/180)
+        if way2=='cos2':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)
+        if way2=='sin2':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)
+    if way1=='cos':
+        if way2=='1':
+            for beta in range(beta_nums):
+                total += math.cos(beta*pi/180)
+        if way2=='cos':
+            for beta in range(beta_nums):
+                total += math.cos(beta*pi/180)**2
+        if way2=='sin':
+            for beta in range(beta_nums):
+                total += math.sin(beta*pi/180)*math.cos(beta*pi/180)
+        if way2=='cos2':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)*math.cos(beta*pi/180)
+        if way2=='sin2':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)*math.cos(beta*pi/180)
+    if way1=='sin':
+        if way2=='1':
+            for beta in range(beta_nums):
+                total += math.sin(beta*pi/180)
+        if way2=='cos':
+            for beta in range(beta_nums):
+                total += math.sin(beta*pi/180)*math.cos(beta*pi/180)
+        if way2=='sin':
+            for beta in range(beta_nums):
+                total += math.sin(beta*pi/180)**2
+        if way2=='cos2':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)*math.sin(beta*pi/180)
+        if way2=='sin2':
+            for beta in range(beta_nums):
+                total += math.sin(2*beta*pi/180)*math.sin(beta*pi/180)
+    if way1=='cos2':
+        if way2=='1':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)
+        if way2=='cos':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)*math.cos(beta*pi/180)
+        if way2=='sin':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)*math.sin(beta*pi/180)
+        if way2=='cos2':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)**2
+        if way2=='sin2':
+            for beta in range(beta_nums):
+                total += math.cos(2*beta*pi/180)*math.sin(2*beta*pi/180)
+    if way1=='sin2':
+        if way2=='1':
+            for beta in range(beta_nums):
+                total += math.sin(2*beta*pi/180)
+        if way2=='cos':
+            for beta in range(beta_nums):
+                total += math.sin(2*beta*pi/180)*math.cos(beta*pi/180)
+        if way2=='sin':
+            for beta in range(beta_nums):
+                total += math.sin(2*beta*pi/180)*math.sin(beta*pi/180)
+        if way2=='cos2':
+            for beta in range(beta_nums):
+                total += math.sin(2*beta*pi/180)*math.cos(2*beta*pi/180)
+        if way2=='sin2':
+            for beta in range(beta_nums):
+                total += math.sin(2*beta*pi/180)**2
+    return total
+
+def RMSE_beta_vr_sigma(way, vr, beta_nums):
+    total = 0.0
+    if way=='1':
+        for beta in range(beta_nums):
+            total += vr[beta]
+    if way=='cos':
+        for beta in range(beta_nums):
+            total += vr[beta]*math.cos(beta*pi/180)
+    if way=='sin':
+        for beta in range(beta_nums):
+            total += vr[beta]*math.sin(beta*pi/180)
+    if way=='cos2':
+        for beta in range(beta_nums):
+            total += vr[beta]*math.cos(2*beta*pi/180)
+    if way=='sin2':
+        for beta in range(beta_nums):
+            total += vr[beta]*math.sin(2*beta*pi/180)
+    return total
+
+def new_b_RMSE_VAD(vr): 
+    print('--new b gogo--')
+    vr = np.array(vr, copy=True)
+    # unfold
+    for i in range(1, len(vr)):
+        if vr[i]-vr[i-1] > max_vr:
+            vr[i] -= 2*max_vr
+        elif vr[i]-vr[i-1] < -5.0:
+            vr[i] += 2*max_vr
+
+    # 建立係數矩陣
+    five_nums = np.zeros((5, 5), dtype=float)
+    ans = np.zeros((5), dtype=float)
+    way = ['1', 'cos', 'sin', 'cos2', 'sin2']
+    for i in range(5):
+        for j in range(5):
+            five_nums[i, j] = RMSE_beta_sigma(way[i], way[j], 360)
+        ans[i] = RMSE_beta_vr_sigma(way[i], vr, 360)
+    #print('init', five_nums, ans)
+
+    for i in range(4):
+        for j in range(i+1, 5):
+            scale = five_nums[j,i]/five_nums[i,i]
+            five_nums[j] -= five_nums[i]*scale
+            ans[j] -= ans[i]*scale
+    #print('gause', five_nums, ans)
+
+    for i in range(4, -1, -1):
+        ans[i] /= five_nums[i,i]
+        for j in range(0, i):
+            ans[j] -= five_nums[j,i]*ans[i]
+    #print('ok',five_nums, ans)
+
+    print('RMSE a0, a1, b1, a2, b2:', ans)
+    # cal parameter
+    u0 = ans[2]/math.cos(alpha)
+    v0 = ans[1]/math.cos(alpha)
+    div = 2*(ans[0]-w0*math.sin(alpha))/(r*math.cos(alpha)**2)
+    stretching_deformation = -2*ans[3]/(r*math.cos(alpha)**2)
+    shear_deformation = 2*ans[4]/(r*math.cos(alpha)**2)
+    print('u0, v0, div, stretching_deformation, shear_deformation:', u0, v0, div, stretching_deformation, shear_deformation)
+
+def new_c_RMSE_gradient_VAD(vr):
+    vr = np.array(vr, copy=True)
+    print('--new c gogo--')
+    # no unfold dvr/dbeta
+    print('---> no unfold dvr/dbeta')
+    dvr = np.array([vr[i+1]-vr[i] for i in range(len(vr)-1)])
+    plt.plot(dvr)
+    plt.title('newc folded dvr/dbeta')
+    plt.savefig('hw6-newc-1')
+    plt.close()
     
+    # 建立係數矩陣
+    five_nums = np.zeros((5, 5), dtype=float)
+    ans = np.zeros((5), dtype=float)
+    way = ['1', 'cos', 'sin', 'cos2', 'sin2']
+    for i in range(5):
+        for j in range(5):
+            five_nums[i, j] = RMSE_beta_sigma(way[i], way[j], 359)
+        ans[i] = RMSE_beta_vr_sigma(way[i], dvr, 359)
+    #print('init', five_nums, ans)
+
+    for i in range(4):
+        for j in range(i+1, 5):
+            scale = five_nums[j,i]/five_nums[i,i]
+            five_nums[j] -= five_nums[i]*scale
+            ans[j] -= ans[i]*scale
+    #print('gause', five_nums, ans)
+
+    for i in range(4, -1, -1):
+        ans[i] /= five_nums[i,i]
+        for j in range(0, i):
+            ans[j] -= five_nums[j,i]*ans[i]
+    #print('ok',five_nums, ans)
+
+    print('RMSE a0, a1, b1, a2, b2:', ans)
+    u0 = ans[1]/math.cos(alpha) * (dvr.shape[0]/2/pi)
+    v0 = -ans[2]/math.cos(alpha) * (dvr.shape[0]/2/pi)
+    shear_deformation = ans[3]/math.cos(alpha)**2/r  * (dvr.shape[0]/2/pi)
+    stretching_deformation = -ans[4]/math.cos(alpha)**2/r  * (dvr.shape[0]/2/pi)
+    print('u0, v0, shear_deformation, stretching_deformation:', u0, v0, shear_deformation, stretching_deformation)
+    
+
+    # unfolded dvr/dbeta
+    print('---> unfolded dvr/dbeta')
+    for i in range(dvr.shape[0]):
+        if dvr[i] > max_vr:
+            dvr[i] -= 2*max_vr
+        elif dvr[i] < -max_vr:
+            dvr[i] += 2*max_vr
+    plt.plot(dvr)
+    plt.title('newc unfolded dvr/dbeta')
+    plt.savefig('hw6-newc-2')
+    plt.close()
+
+    # 建立係數矩陣
+    five_nums = np.zeros((5, 5), dtype=float)
+    ans = np.zeros((5), dtype=float)
+    way = ['1', 'cos', 'sin', 'cos2', 'sin2']
+    for i in range(5):
+        for j in range(5):
+            five_nums[i, j] = RMSE_beta_sigma(way[i], way[j], 359)
+        ans[i] = RMSE_beta_vr_sigma(way[i], dvr, 359)
+    #print('init', five_nums, ans)
+
+    for i in range(4):
+        for j in range(i+1, 5):
+            scale = five_nums[j,i]/five_nums[i,i]
+            five_nums[j] -= five_nums[i]*scale
+            ans[j] -= ans[i]*scale
+    #print('gause', five_nums, ans)
+
+    for i in range(4, -1, -1):
+        ans[i] /= five_nums[i,i]
+        for j in range(0, i):
+            ans[j] -= five_nums[j,i]*ans[i]
+    #print('ok',five_nums, ans)
+
+    print('RMSE a0, a1, b1, a2, b2:', ans)
+    u0 = ans[1]/math.cos(alpha) * (dvr.shape[0]/2/pi)
+    v0 = -ans[2]/math.cos(alpha) * (dvr.shape[0]/2/pi)
+    shear_deformation = ans[3]/math.cos(alpha)**2/r  * (dvr.shape[0]/2/pi)
+    stretching_deformation = -ans[4]/math.cos(alpha)**2/r  * (dvr.shape[0]/2/pi)
+    print('u0, v0, shear_deformation, stretching_deformation:', u0, v0, shear_deformation, stretching_deformation)
+
 if __name__ == '__main__':
     vr = read_fort()
-    a_plot_vr(vr)
-    b_unfold_plot_VAD_cal_var(vr)
-    c_gradient_VAD_cal_uv(vr)
+    #a_plot_vr(vr)
+    #b_unfold_plot_VAD_cal_var(vr)
+    #c_gradient_VAD_cal_uv(vr)
+    new_b_RMSE_VAD(vr)
+    new_c_RMSE_gradient_VAD(vr)
